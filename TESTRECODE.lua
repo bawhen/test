@@ -18,6 +18,7 @@ local camera = workspace.CurrentCamera
 local aimbot = { enabled = false }
 local visuals = {}
 local misc = {}
+local esp = {}
 
 local is_on_mobile = false
 if uis.TouchEnabled and not uis.KeyboardEnabled and not uis.MouseEnabled then
@@ -80,7 +81,9 @@ local get_target = LPH_NO_VIRTUALIZE(function()
 end)
 
 local aimbot_callback = function(args, namecall, p_self)
-    aimbot.target_player = get_target()
+    if not aimbot.target_player then
+        return namecall(p_self, unpack(args))
+    end
 
     local target_part = aimbot.target_player[aimbot.aim_part]
 
@@ -283,19 +286,20 @@ end))
 
 -- menu initialization
 local colors = {
-    SchemeColor = Color3.fromRGB(46, 143, 255),
+    SchemeColor = Color3.fromRGB(33, 129, 255),
     Background = Color3.fromRGB(0, 0, 0),
-    Header = Color3.fromRGB(20, 20, 20),
+    Header = Color3.fromRGB(0, 0, 0),
     TextColor = Color3.fromRGB(255,255,255),
     ElementColor = Color3.fromRGB(20, 20, 20)
 }
 
-local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/bawhen/kavo_lib_modified/refs/heads/main/kavo_lib_modified.lua"))()
 local window = lib.CreateLib("Mongoloid Recode [BETA]", colors)
 
 local aimbot_tab = window:NewTab("Aimbot")
 local visuals_tab = window:NewTab("Visuals")
 local misc_tab = window:NewTab("Misc")
+local autofarm_tab = window:NewTab("Autofarm")
 
 -- aimbot tab --
 local aimbot_main = aimbot_tab:NewSection("Main")
@@ -371,9 +375,115 @@ visuals_colors:NewColorPicker("Distance Color", "", Color3.fromRGB(58, 160, 255)
 end)
 
 -- misc. tab --
+local misc_main = misc_tab:NewSection("Main")
+local misc_movement = misc_tab:NewSection("Movement")
 
+misc_main:NewToggle("God mode", "Cannot do damage while active.", function(s)
+    misc.godmode = s
+end)
+misc_main:NewToggle("Ghost mode", "Walk around with a fake body. (Hide your real body somewhere)", function(s)
+    misc.ghostmode = s
+    local character = players.LocalPlayer.Character
+
+    if misc.ghostmode then
+        if not misc.cached then
+            misc.old_parent = nil
+            misc.old_cframe = nil
+            misc.new_hrp = nil
+            misc.old_hrp = nil
+
+            misc.old_parent = character.Parent
+            misc.old_hrp = character.HumanoidRootPart
+            misc.old_cframe = character.HumanoidRootPart.CFrame
+            misc.new_hrp = character.HumanoidRootPart:Clone()
+            misc.cached = true
+        end
+
+        character.Parent = game
+        misc.old_hrp.Parent = game
+        misc.new_hrp.Parent = character
+        character.Parent = misc.old_parent
+        misc.new_hrp.CFrame = misc.old_cframe
+        character.Parent = misc.old_parent
+    else
+        character.Parent = game
+        misc.new_hrp.Parent = game
+        misc.old_hrp.Parent = character
+        character.Parent = misc.old_parent
+        misc.old_hrp.CFrame = misc.old_cframe
+        misc.cached = false
+    end
+end)
+
+misc_main:NewButton("Instant Respawn", "", function()
+    rep_storage.loadCharacter:FireServer()
+end)
+
+misc_main:NewButton("Open Safe", "Open your safe from anywhere.", function()
+    local safe = players.LocalPlayer.PlayerGui.MainGUI.safeFrame
+    if safe then
+        safe.Position = UDim2.new({0.293, 0}, {0.239, 0})
+        safe.Visible = true
+    end
+end)
+
+misc_main:NewTextBox("Tweet", "The message you want to tweet", function(txt)
+	misc.tweet_text = txt
+end)
+misc_main:NewButton("Send Tweet", "Tweet anything you want. (Yes, anything)", tweet_callback)
+
+
+misc_movement:NewToggle("Infinite Stamina", "", function(s)
+    misc.infinite_stamina = s
+end)
+misc_movement:NewToggle("No Jump Cooldown", "", function(s)
+    local humanoid = players.LocalPlayer.Character.Humanoid
+    local connections = getconnections(humanoid.Changed)
+
+    if s then
+        connections[1]:Disable()
+    else
+        connections[1]:Enable()
+    end
+end)
+misc_movement:NewToggle("Change Walk/Jump", "", function(s)
+    misc.change_stats = s
+end)
+misc_movement:NewSlider("WalkSpeed", "", 300, 5, function(s)
+    misc.walkspeed = s
+end)
+misc_movement:NewSlider("JumpPower", "", 300, 5, function(s)
+    misc.JumpPower = s
+end)
+
+-- autofarm tab --
+local autofarm_repz = autofarm_tab:NewSection("Repz")
+
+autofarm_repz:NewToggle("Hijack Other Printers", "Steals repz from other printers and uses them to print your own.", function(s)
+    misc.hijack_printers = s
+end)
+autofarm_repz:NewDropdown("Filament", "The filament you want to buy for your printers.", {"Basic Filament","Exclusive Filament","Galaxy Filament", "Supreme Filament", "Rior Filament"}, function(s)
+    misc.autofarm_filament = s
+end)
+autofarm_repz:NewSlider("Minimum Balance", "", 100, 60000, function(s)
+    misc.autofarm_limit = s
+end)
+autofarm_repz:NewButton("Start Autofarm", "You will not be able to move.", function(s)
+    if not misc.autofarm_filament or not misc.autofarm_limit then warn("[mongoloid] one of your autofarm settings has not been set") return end
+
+    -- reset and store all printers
+    printers = {}
+    for i, v in pairs(workspace.RepzMachines:GetChildren()) do
+        if v:IsA("Model") and v:FindFirstChild("RepzHandler") then
+            if not string.find(v.Name, players.LocalPlayer.Name) and not misc.hijack_printers then continue end
+            table.insert(printers, v)
+        end
+    end
+
+    autofarm_callback()
+end)
 -- DRAWING STUFF --
-local strings = {}
+local elements = {}
 local drawing_ctx = nil
 -- this stuff doesn't need to be obfuscated
 LPH_NO_VIRTUALIZE(function()
@@ -432,78 +542,152 @@ LPH_NO_VIRTUALIZE(function()
         return min, max, onscreen
     end
 
-    local function RunVisuals(ctx)
-        local localplayer = players.LocalPlayer
-        local hrp = localplayer.Character:FindFirstChild("HumanoidRootPart") or nil
-        local mouse = uis:GetMouseLocation()
+    -- loop through players and store the drawn shapes as objects themselves if the player is on screen
+    --[[
+        elements = {
+            player = {
+                box = drawing,
+                name = drawing
+            }
+        }
+    ]]
 
-        for i, v in pairs(players:GetChildren()) do
-            local character = v.Character; if not character or v == players.LocalPlayer then continue end
-            local humanoid = character.Humanoid; if not humanoid or humanoid and humanoid.Health <= 0 then continue end
-            local target_hrp = character.HumanoidRootPart; if not target_hrp then continue end
+    local add_drawing = function(drawing_type, args)
+        local drawing = Drawing.new(drawing_type)
 
-            local cur_distance = (character.HumanoidRootPart.Position - hrp.Position).Magnitude
-            if cur_distance > visuals.max_distance then continue end
+        for i, v in pairs(args) do
+            drawing[i] = v
+        end
+
+        return drawing
+    end
+
+    local add_esp = function(player)
+        local objs = {
+            box_outline = add_drawing("Square", { Filled = false, Color = Color3.new(0,0,0), Thickness = 3 }),
+            box_line = add_drawing("Square", { Filled = false, Color = Color3.new(0,0,0), Thickness = 1 }),
+
+            name = add_drawing("Text", { Font = 2, Size = 14, Center = true }),
+            tool = add_drawing("Text", { Font = 2, Size = 14, Center = true }),
+            distance = add_drawing("Text", { Font = 2, Size = 14, Center = false })
+        }
+
+        esp[player.Name] = objs
+    end
+
+    local remove_esp = function(player_name)
+        for i, v in pairs(esp[player_name]) do
+            v:Remove()
+        end
+
+        esp[player_name] = nil
+    end
+
+    local disable_esp = function(player_name)
+        for i, v in pairs(esp[player_name]) do
+            v.Visible = false
+        end
+    end
+
+    local update_esp = function()
+        local local_hrp = players.LocalPlayer.Character:WaitForChild("HumanoidRootPart")
+
+        for i, v in pairs(esp) do
+            local player = players:FindFirstChild(i)
+            if not player then continue end
+            local character = player.Character or player.CharacterAdded:wait()
+            local humanoid = character:WaitForChild("Humanoid")
+            local plr_hrp = character:WaitForChild("HumanoidRootPart")
+
+            local distance = (plr_hrp.Position - local_hrp.Position).Magnitude
+            if distance > visuals.max_distance or humanoid.Health <= 0 then disable_esp(i) continue end
 
             local min, max, onscreen = get_bounding_box(character)
-            if not onscreen then continue end
-
-            strings = {}
+            if not onscreen then disable_esp(i) continue end
 
             local box_top = Vector2.new((min.X + max.X) / 2, min.Y - 15)
             local box_bottom = Vector2.new((min.X + max.X) / 2, max.Y + 5)
 
             if visuals.player_box then
-                ctx.Rectangle(min, max - min, Color3.new(0, 0, 0), 1, 0.3, 3)
-                ctx.Rectangle(min, max - min, visuals.box_color or Color3.new(1, 0.243137, 0.243137), 1, 0.3, 1)
+                v.box_outline.Position = min
+                v.box_outline.Visible = visuals.player_box or false
+                v.box_outline.Size = max - min
+
+                v.box_line.Position = min
+                v.box_line.Visible = visuals.player_box or false
+                v.box_line.Color = visuals.box_color or Color3.new(0.988235, 0.274509, 0.274509)
+                v.box_line.Size = max - min
             end
 
             if visuals.player_name then
-                ctx.OutlinedText(box_top, Drawing.Fonts.System, 12, visuals.name_color or Color3.new(1,1,1), 1, Color3.new(0, 0, 0), 1, v.Name, true)
+                v.name.Position = box_top
+                v.name.Text = player.Name or false
+                v.name.Color = visuals.name_color or Color3.new(1,1,1)
+                v.name.Visible = visuals.player_name
             end
 
-            if visuals.tool_name then
-                if character:FindFirstChildWhichIsA("Tool") then
-                    local tool_name = character:FindFirstChildWhichIsA("Tool").Name
-                    table.insert(strings, { Text = tool_name, Color = visuals.tool_color or Color3.new(1,1,1), Position = "Bottom" })
-                end
+            if visuals.distance then
+                v.distance.Position = Vector2.new((min.X + max.X) + 5, max.Y)
+                v.distance.Visible = visuals.distance or false
+                v.distance.Text = "[" .. tostring(distance) .. "]"
+                v.distance.Color = visuals.distance_color or Color3.new(0.203921, 0.615686, 1)
             end
 
-            if visuals.distance and target_hrp and hrp then
-                local target_pos = target_hrp.Position
-                local local_pos  = hrp.Position
-                local distance = (target_pos - local_pos).Magnitude
-
-                table.insert(strings, { Text = "[" .. tostring(math.floor(distance)) .. "]", Color = visuals.distance_color or Color3.new(0.184313, 0.635294, 1), Position = "Bottom" })
-            end
-
-            for index, string in pairs(strings) do
-                if string.Position == "Top" then
-                    local top_pos = Vector2.new(box_top.X, box_top.Y - ((index - 1) * 10))
-                    ctx.OutlinedText(top_pos, Drawing.Fonts.System, 12, string.Color, 1, Color3.new(0, 0, 0), 1, string.Text, true)
-                else
-                    local bottom_pos = Vector2.new(box_bottom.X, box_bottom.Y + ((index - 1) * 10))
-                    ctx.OutlinedText(bottom_pos, Drawing.Fonts.System, 12, string.Color, 1, Color3.new(0, 0, 0), 1, string.Text, true)
-                end
-            end
-
-            if aimbot.fov_circle then
-                ctx.Circle(mouse, aimbot.fov_radius, Color3.new(0, 0, 0), 1, aimbot.fov_radius / 2, 3)
-                ctx.Circle(mouse, aimbot.fov_radius, visuals.fov_color or Color3.new(0.184313, 0.635294, 1), 1, aimbot.fov_radius / 2, 1)
-            end
-
-            if aimbot.show_target and aimbot.target_player then
-                local target = aimbot.target_player:FindFirstChild("Head")
-                ctx.Line(mouse, get_screen_pos(target), visuals.target_color or Color3.new(1,1,1), 1, 1)
+            if character:FindFirstChildWhichIsA("Tool") and visuals.tool_name then
+                v.tool.Position = box_bottom
+                v.tool.Visible = visuals.tool_name or false
+                v.tool.text = character:FindFirstChildWhichIsA("Tool").Name or ""
+                v.tool.Color = visuals.tool_color or Color3.new(1,1,1)
             end
         end
     end
 
+    -- inputs
+    local function update_fly_controls(input, is_pressed)
+        local directions = {
+            [Enum.KeyCode.W] = "forward",
+            [Enum.KeyCode.A] = "left",
+            [Enum.KeyCode.S] = "backward",
+            [Enum.KeyCode.D] = "right",
+            [Enum.KeyCode.E] = "up",
+            [Enum.KeyCode.Q] = "down"
+        }
 
-    -- drawing hook
-    DrawingImmediate.GetPaint(1):Connect(function(ctx)
-        drawing_ctx = ctx
+        if directions[input.KeyCode] then
+            misc.control[directions[input.KeyCode]] = is_pressed and 1 or 0
+        end
+    end
+
+    uis.InputBegan:Connect(function(input)
+        update_fly_controls(input, true)
     end)
+    uis.InputEnded:Connect(function(input)
+        update_fly_controls(input, false)
+    end)
+
+    -- esp initialization --
+    for i, v in pairs(players:GetPlayers()) do
+        if v == players.LocalPlayer then continue end
+        add_esp(v)
+    end
+    print("added esp to players")
+
+    players.PlayerAdded:Connect(function(plr)
+        if plr == players.LocalPlayer then return end
+        add_esp(plr)
+    end)
+    print("connected to playeradded")
+
+    players.PlayerRemoving:Connect(function(plr)
+        if plr == players.LocalPlayer then return end
+        remove_esp(plr.Name)
+    end)
+    print("connected to playerremoving")
+
+    rs.RenderStepped:Connect(function()
+        update_esp()
+    end)
+    print("connected to renderstepped")
 
     rs.Heartbeat:Connect(function()
         local lp = players.LocalPlayer
@@ -534,30 +718,23 @@ LPH_NO_VIRTUALIZE(function()
                 aimbot.target_player = nil
             end
         end
-
-        RunVisuals(drawing_ctx)
-    end)
-
-    -- inputs
-    local function update_fly_controls(input, is_pressed)
-        local directions = {
-            [Enum.KeyCode.W] = "forward",
-            [Enum.KeyCode.A] = "left",
-            [Enum.KeyCode.S] = "backward",
-            [Enum.KeyCode.D] = "right",
-            [Enum.KeyCode.E] = "up",
-            [Enum.KeyCode.Q] = "down"
-        }
-
-        if directions[input.KeyCode] then
-            misc.control[directions[input.KeyCode]] = is_pressed and 1 or 0
-        end
-    end
-
-    uis.InputBegan:Connect(function(input)
-        update_fly_controls(input, true)
-    end)
-    uis.InputEnded:Connect(function(input)
-        update_fly_controls(input, false)
     end)
 end)()
+
+--[[
+local teleport = function(cframe)
+    local args = {
+        [1] = cframe,
+        [2] = true,
+    }
+
+    game:GetService('ReplicatedStorage').movementFunction:FireServer(unpack(args))
+end
+
+workspace.ChildAdded:Connect(function(child)
+    if string.find(child.Name, "BodyBag") then
+        task.wait(0.5)
+
+    end
+end)
+]]--
